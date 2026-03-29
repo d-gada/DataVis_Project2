@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cincinnati 311 Trash Requests Map</title>
+    <link rel="icon" href="data:;base64,iVBORwOKGO=" />
+    <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <header class="page-header">
+        <h1>Cincinnati 311 Trash Requests in 2025</h1>
+        <p class="subheading">Task 1 map view using Leaflet + d3</p>
+        <p class="description">
+            This view focuses on trash-related 311 calls from the provided sample data. Hover a point to see
+            call details, change how points are colored, and switch the map background.
+        </p>
+    </header>
+
+    <main class="layout">
+        <section class="card controls-card">
+            <h2>Controls</h2>
+
+            <div class="control-row">
+                <label for="colorBySelect"><strong>Color by</strong></label>
+                <select id="colorBySelect">
+                    <option value="daysToUpdate">Time from created date to last update</option>
+                    <option value="neighborhood">Neighborhood</option>
+                    <option value="priority">Priority</option>
+                    <option value="department">Public agency</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <button id="toggleBasemapBtn" type="button">Switch map background</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Service focus</div>
+                    <div class="stat-value" id="serviceTypeLabel">Trash-related requests</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Mapped calls</div>
+                    <div class="stat-value" id="mappedCount">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Not mapped</div>
+                    <div class="stat-value" id="unmappedCount">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Current basemap</div>
+                    <div class="stat-value" id="basemapLabel">Imagery</div>
+                </div>
+            </div>
+
+            <div class="legend-area">
+                <h3 id="legendTitle">Legend</h3>
+                <div id="legend"></div>
+            </div>
+        </section>
+
+        <section class="card map-card">
+            <h2>Trash-related service requests</h2>
+            <p class="hint">Points are placed using the request latitude and longitude from the dataset.</p>
+            <div id="my-map"></div>
+        </section>
+    </main>
+
+    <div id="tooltip"></div>
+
+    <script src="js/d3.v6.min.js"></script>
+    <script src="js/leaflet.js"></script>
+    <script src="js/leafletMap.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
