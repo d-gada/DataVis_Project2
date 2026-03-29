@@ -5,6 +5,7 @@ body {
   color: #45322e;
 }
 
+/* ── Header ────────────────────────────────────────────────────────────────── */
 .page-header {
   text-align: center;
   padding: 18px 16px;
@@ -30,14 +31,18 @@ body {
   color: #ead8cf;
 }
 
+/* ── Page layout ────────────────────────────────────────────────────────────── */
+/* The top row (controls + map) uses a 2-column grid.
+   The timeline card below it spans full width via the outer padding. */
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 16px 0 16px;   /* no bottom padding — timeline card follows */
   align-items: start;
 }
 
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
 .card {
   background: #f8e6de;
   border: 1px solid #d8cccc;
@@ -52,6 +57,12 @@ body {
   font-size: 24px;
 }
 
+/* Timeline card sits below the map row and stretches full width */
+.timeline-card {
+  margin: 16px 16px 16px 16px;
+}
+
+/* ── Controls card internals ───────────────────────────────────────────────── */
 .controls-card h3 {
   margin: 12px 0 8px 0;
   font-size: 18px;
@@ -83,6 +94,7 @@ select:hover {
   background-color: #2a649b;
 }
 
+/* ── Stats grid ─────────────────────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -108,12 +120,14 @@ select:hover {
   font-weight: 700;
 }
 
+/* ── Hint text ──────────────────────────────────────────────────────────────── */
 .hint {
   margin: 0 0 8px 0;
   font-size: 13px;
   color: #807675;
 }
 
+/* ── Map ────────────────────────────────────────────────────────────────────── */
 #my-map {
   width: 100%;
   height: 650px;
@@ -121,6 +135,44 @@ select:hover {
   overflow: hidden;
 }
 
+/* ── Timeline chart ─────────────────────────────────────────────────────────── */
+#timeline-chart {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+#timeline-chart svg {
+  display: block;
+  width: 100%;
+}
+
+/* Bar hover handled in JS; base color set here as a fallback */
+.timeline-bar {
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+
+/* Axis text */
+.axis text {
+  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-size: 12px;
+  fill: #45322e;
+}
+
+.axis line,
+.axis path {
+  stroke: #a08070;
+}
+
+/* Axis labels (rotated Y label, X label) */
+.axis-label {
+  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-size: 13px;
+  fill: #45322e;
+  font-weight: 600;
+}
+
+/* ── Tooltip ────────────────────────────────────────────────────────────────── */
 #tooltip {
   position: absolute;
   opacity: 0;
@@ -143,6 +195,7 @@ select:hover {
   margin-bottom: 4px;
 }
 
+/* ── Legend ─────────────────────────────────────────────────────────────────── */
 .legend-area {
   margin-top: 8px;
 }
@@ -182,10 +235,12 @@ select:hover {
   color: #807675;
 }
 
+/* ── Leaflet overrides ──────────────────────────────────────────────────────── */
 .leaflet-container {
   font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
 }
 
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;

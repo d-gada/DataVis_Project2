@@ -2,6 +2,7 @@ console.log('Cincinnati 311 Task 1 loaded');
 
 const SERVICE_KEYWORD = 'TRASH';
 let leafletMap = null;
+let timeline   = null;
 
 // Load the sample data that came with the starter code.
 d3.csv('data/311Sample.csv')
@@ -31,5 +32,6 @@ d3.csv('data/311Sample.csv')
     });
 
     leafletMap = new LeafletMap({ parentElement: '#my-map' }, trashData);
+    timeline   = new Timeline(  { parentElement: '#timeline-chart' }, trashData);
   })
   .catch(error => console.error(error));
