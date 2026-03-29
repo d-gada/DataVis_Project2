@@ -1,5 +1,5 @@
 body {
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
   margin: 0;
   background: #bc9585;
   color: #45322e;
@@ -38,7 +38,7 @@ body {
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 16px;
-  padding: 16px 16px 0 16px;   /* no bottom padding — timeline card follows */
+  padding: 16px 16px 0 16px; /* no bottom padding — timeline card follows */
   align-items: start;
 }
 
@@ -79,7 +79,7 @@ select,
 button {
   height: 40px;
   padding: 0 12px;
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
   font-size: 15px;
   border-radius: 6px;
   border: 1px solid #533930;
@@ -154,7 +154,7 @@ select:hover {
 
 /* Axis text */
 .axis text {
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
   font-size: 12px;
   fill: #45322e;
 }
@@ -166,7 +166,7 @@ select:hover {
 
 /* Axis labels (rotated Y label, X label) */
 .axis-label {
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
   font-size: 13px;
   fill: #45322e;
   font-weight: 600;
@@ -237,7 +237,7 @@ select:hover {
 
 /* ── Leaflet overrides ──────────────────────────────────────────────────────── */
 .leaflet-container {
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Cambria, Cochin, Georgia, Times, "Times New Roman", serif;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
@@ -248,5 +248,30 @@ select:hover {
 
   #my-map {
     height: 520px;
+  }
+}
+
+/* ── Level 3 attribute charts ───────────────────────────────────────────────── */
+.attributes-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 16px 16px 16px;
+}
+
+.attr-card h2 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.bar-label {
+  font-size: 11px;
+  fill: #45322e;
+  pointer-events: none;
+}
+
+@media (max-width: 980px) {
+  .attributes-section {
+    grid-template-columns: 1fr;
   }
 }

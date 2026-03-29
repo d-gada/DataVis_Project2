@@ -1,93 +1,107 @@
 class Timeline {
-  constructor(_config, _data) {
+  constructor(_config, _data, _dispatcher) {
     this.config = {
       parentElement: _config.parentElement,
-      margin: { top: 20, right: 30, bottom: 60, left: 60 }
+      margin: { top: 20, right: 30, bottom: 60, left: 60 },
     };
-
     this.data = _data;
+    this.dispatcher = _dispatcher;
     this.initVis();
   }
 
   initVis() {
     let vis = this;
+    const m = vis.config.margin;
+    const containerW = document.querySelector(
+      vis.config.parentElement,
+    ).clientWidth;
 
-    // ── Dimensions ────────────────────────────────────────────────────────────
-    const container = document.querySelector(vis.config.parentElement);
-    vis.width  = container.clientWidth  - vis.config.margin.left - vis.config.margin.right;
-    vis.height = 260 - vis.config.margin.top - vis.config.margin.bottom;
+    vis.width = containerW - m.left - m.right;
+    vis.height = 260 - m.top - m.bottom;
 
-    // ── SVG root ──────────────────────────────────────────────────────────────
-    vis.svg = d3.select(vis.config.parentElement)
-      .append('svg')
-        .attr('width',  vis.width  + vis.config.margin.left + vis.config.margin.right)
-        .attr('height', vis.height + vis.config.margin.top  + vis.config.margin.bottom)
-      .append('g')
-        .attr('transform', `translate(${vis.config.margin.left},${vis.config.margin.top})`);
+    vis.svg = d3
+      .select(vis.config.parentElement)
+      .append("svg")
+      .attr("width", vis.width + m.left + m.right)
+      .attr("height", vis.height + m.top + m.bottom)
+      .append("g")
+      .attr("transform", `translate(${m.left},${m.top})`);
 
-    // ── Scales ────────────────────────────────────────────────────────────────
-    vis.xScale = d3.scaleBand()
-      .range([0, vis.width])
-      .padding(0.15);
+    vis.xScale = d3.scaleBand().range([0, vis.width]).padding(0.15);
+    vis.yScale = d3.scaleLinear().range([vis.height, 0]);
 
-    vis.yScale = d3.scaleLinear()
-      .range([vis.height, 0]);
+    vis.xAxisG = vis.svg
+      .append("g")
+      .attr("class", "axis x-axis")
+      .attr("transform", `translate(0,${vis.height})`);
+    vis.yAxisG = vis.svg.append("g").attr("class", "axis y-axis");
 
-    // ── Axes ──────────────────────────────────────────────────────────────────
-    vis.xAxisG = vis.svg.append('g')
-      .attr('class', 'axis x-axis')
-      .attr('transform', `translate(0,${vis.height})`);
+    vis.svg
+      .append("text")
+      .attr("class", "axis-label")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -vis.height / 2)
+      .attr("y", -46)
+      .attr("text-anchor", "middle")
+      .text("Number of requests");
 
-    vis.yAxisG = vis.svg.append('g')
-      .attr('class', 'axis y-axis');
+    vis.svg
+      .append("text")
+      .attr("class", "axis-label")
+      .attr("x", vis.width / 2)
+      .attr("y", vis.height + 52)
+      .attr("text-anchor", "middle")
+      .text("Week of year (2025)");
 
-    // Y-axis label
-    vis.svg.append('text')
-      .attr('class', 'axis-label')
-      .attr('transform', 'rotate(-90)')
-      .attr('x', -vis.height / 2)
-      .attr('y', -46)
-      .attr('text-anchor', 'middle')
-      .text('Number of requests');
+    vis.barsG = vis.svg.append("g");
 
-    // X-axis label
-    vis.svg.append('text')
-      .attr('class', 'axis-label')
-      .attr('x', vis.width / 2)
-      .attr('y', vis.height + 52)
-      .attr('text-anchor', 'middle')
-      .text('Week of year (2025)');
+    // d3 brush
+    vis.brush = d3
+      .brushX()
+      .extent([
+        [0, 0],
+        [vis.width, vis.height],
+      ])
+      .on("end", function (event) {
+        if (!event.selection) {
+          vis.dispatcher.call("selectionChanged", null, allData, "timeline");
+          return;
+        }
+        const [x0, x1] = event.selection;
+        const selected = vis.weeklyData.filter((d) => {
+          const bx = vis.xScale(d.week);
+          return bx + vis.xScale.bandwidth() > x0 && bx < x1;
+        });
+        const selectedWeeks = new Set(selected.map((d) => d.week.getTime()));
+        const filtered = allData.filter(
+          (d) =>
+            d.createdDate &&
+            selectedWeeks.has(d3.timeWeek.floor(d.createdDate).getTime()),
+        );
+        vis.dispatcher.call("selectionChanged", null, filtered, "timeline");
+      });
 
-    // ── Clip path so bars don't overflow ─────────────────────────────────────
-    vis.svg.append('clipPath')
-        .attr('id', 'timeline-clip')
-      .append('rect')
-        .attr('width', vis.width)
-        .attr('height', vis.height);
+    vis.brushG = vis.svg.append("g").attr("class", "brush").call(vis.brush);
 
-    // ── Bar group ─────────────────────────────────────────────────────────────
-    vis.barsG = vis.svg.append('g')
-      .attr('clip-path', 'url(#timeline-clip)');
-
-    vis.updateVis();
+    vis.updateVis(vis.data);
   }
 
-  // Called whenever the underlying dataset changes (Level 4 brushing will use this).
-  updateVis() {
+  updateVis(data) {
     let vis = this;
+    vis.data = data;
 
-    // ── Bin by ISO week ───────────────────────────────────────────────────────
-    // d3.timeWeek.floor truncates any date to the Monday of its week, giving us
-    // consistent weekly buckets regardless of day-of-week variation.
     const weeklyMap = d3.rollup(
-      vis.data.filter(d => d.createdDate instanceof Date && !isNaN(d.createdDate)),
-      v => v.length,
-      d => d3.timeWeek.floor(d.createdDate)
+      vis.data.filter(
+        (d) => d.createdDate instanceof Date && !isNaN(d.createdDate),
+      ),
+      (v) => v.length,
+      (d) => d3.timeWeek.floor(d.createdDate),
     );
 
-    // Convert Map → sorted array of { week, count } objects.
-    vis.weeklyData = Array.from(weeklyMap, ([week, count]) => ({ week, count }))
-      .sort((a, b) => a.week - b.week);
+    vis.weeklyData = Array.from(weeklyMap, ([week, count]) => ({
+      week,
+      count,
+    })).sort((a, b) => a.week - b.week);
 
     vis.renderVis();
   }
@@ -95,76 +109,62 @@ class Timeline {
   renderVis() {
     let vis = this;
 
-    // ── Update scales ─────────────────────────────────────────────────────────
-    vis.xScale.domain(vis.weeklyData.map(d => d.week));
-    vis.yScale.domain([0, d3.max(vis.weeklyData, d => d.count)]).nice();
+    vis.xScale.domain(vis.weeklyData.map((d) => d.week));
+    vis.yScale.domain([0, d3.max(vis.weeklyData, (d) => d.count)]).nice();
 
-    // ── X axis — show only month labels to avoid overcrowding ─────────────────
-    // We pick one tick per month by keeping the first week that falls within each
-    // calendar month.
-    const monthStarts = vis.weeklyData.filter((d, i) => {
-      if (i === 0) return true;
-      return d.week.getMonth() !== vis.weeklyData[i - 1].week.getMonth();
-    });
-
-    const monthFmt = d3.timeFormat('%b %Y');
-
-    vis.xAxisG.call(
-      d3.axisBottom(vis.xScale)
-        .tickValues(monthStarts.map(d => d.week))
-        .tickFormat(d => monthFmt(d))
-    )
-    .selectAll('text')
-      .attr('transform', 'rotate(-35)')
-      .style('text-anchor', 'end');
-
-    vis.yAxisG.call(
-      d3.axisLeft(vis.yScale).ticks(5).tickFormat(d3.format('d'))
+    const monthStarts = vis.weeklyData.filter(
+      (d, i) =>
+        i === 0 || d.week.getMonth() !== vis.weeklyData[i - 1].week.getMonth(),
     );
 
-    // ── Bars ──────────────────────────────────────────────────────────────────
-    // Design choice: a single desaturated steel-blue. The data attribute being
-    // shown is quantitative (count over time), so no categorical color encoding
-    // is needed here — the bar height encodes the value. A neutral hue avoids
-    // implying any ranking or category distinction among weeks.
-    const bars = vis.barsG.selectAll('.timeline-bar')
-      .data(vis.weeklyData, d => d.week);
+    vis.xAxisG
+      .call(
+        d3
+          .axisBottom(vis.xScale)
+          .tickValues(monthStarts.map((d) => d.week))
+          .tickFormat(d3.timeFormat("%b %Y")),
+      )
+      .selectAll("text")
+      .attr("transform", "rotate(-35)")
+      .style("text-anchor", "end");
 
-    const barsEnter = bars.enter()
-      .append('rect')
-        .attr('class', 'timeline-bar')
-        .attr('fill', '#4a7fa5')
-        .attr('rx', 2);
+    vis.yAxisG.call(
+      d3.axisLeft(vis.yScale).ticks(5).tickFormat(d3.format("d")),
+    );
 
-    barsEnter.merge(bars)
-      .attr('x',      d => vis.xScale(d.week))
-      .attr('y',      d => vis.yScale(d.count))
-      .attr('width',  vis.xScale.bandwidth())
-      .attr('height', d => vis.height - vis.yScale(d.count))
-      // Highlight on hover
-      .on('mouseover', function(event, d) {
-        d3.select(this).attr('fill', '#0e2f4e');
+    const bars = vis.barsG
+      .selectAll(".timeline-bar")
+      .data(vis.weeklyData, (d) => d.week);
 
+    bars
+      .enter()
+      .append("rect")
+      .attr("class", "timeline-bar")
+      .attr("fill", "#4a7fa5")
+      .attr("rx", 2)
+      .merge(bars)
+      .attr("x", (d) => vis.xScale(d.week))
+      .attr("y", (d) => vis.yScale(d.count))
+      .attr("width", vis.xScale.bandwidth())
+      .attr("height", (d) => vis.height - vis.yScale(d.count))
+      .on("mouseover", function (event, d) {
+        d3.select(this).attr("fill", "#0e2f4e");
         const weekEnd = new Date(d.week);
         weekEnd.setDate(weekEnd.getDate() + 6);
-        const fmt = d3.timeFormat('%b %d, %Y');
-
-        d3.select('#tooltip')
-          .style('opacity', 1)
-          .html(`
-            <div class="tooltip-title">Week of ${fmt(d.week)}</div>
-            <div><strong>Week ending:</strong> ${fmt(weekEnd)}</div>
-            <div><strong>Requests:</strong> ${d.count}</div>
-          `);
+        const fmt = d3.timeFormat("%b %d, %Y");
+        d3.select("#tooltip").style("opacity", 1)
+          .html(`<div class="tooltip-title">Week of ${fmt(d.week)}</div>
+                   <div><strong>Week ending:</strong> ${fmt(weekEnd)}</div>
+                   <div><strong>Requests:</strong> ${d.count}</div>`);
       })
-      .on('mousemove', function(event) {
-        d3.select('#tooltip')
-          .style('left', (event.pageX + 12) + 'px')
-          .style('top',  (event.pageY + 12) + 'px');
+      .on("mousemove", (event) => {
+        d3.select("#tooltip")
+          .style("left", event.pageX + 12 + "px")
+          .style("top", event.pageY + 12 + "px");
       })
-      .on('mouseleave', function() {
-        d3.select(this).attr('fill', '#4a7fa5');
-        d3.select('#tooltip').style('opacity', 0);
+      .on("mouseleave", function () {
+        d3.select(this).attr("fill", "#4a7fa5");
+        d3.select("#tooltip").style("opacity", 0);
       });
 
     bars.exit().remove();

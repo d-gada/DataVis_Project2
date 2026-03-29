@@ -41,6 +41,16 @@
           </button>
         </div>
 
+        <div class="control-row">
+          <button
+            id="clearBtn"
+            type="button"
+            style="display: none; background-color: #8b2c2c"
+          >
+            Clear selection
+          </button>
+        </div>
+
         <div class="stats-grid">
           <div class="stat-box">
             <div class="stat-label">Service focus</div>
@@ -89,11 +99,43 @@
       <div id="timeline-chart"></div>
     </section>
 
+    <!-- Level 3: four attribute charts in a 2x2 grid -->
+    <section class="attributes-section">
+      <div class="card attr-card">
+        <h2>Requests by neighborhood</h2>
+        <p class="hint">
+          Sorted by volume. Shows which neighborhoods generate the most
+          trash-related calls.
+        </p>
+        <div id="chart-neighborhood"></div>
+      </div>
+
+      <div class="card attr-card">
+        <h2>Requests by method received</h2>
+        <p class="hint">How residents submitted their service request.</p>
+        <div id="chart-method"></div>
+      </div>
+
+      <div class="card attr-card">
+        <h2>Requests by department</h2>
+        <p class="hint">Which city department handles the request.</p>
+        <div id="chart-dept"></div>
+      </div>
+
+      <div class="card attr-card">
+        <h2>Requests by priority</h2>
+        <p class="hint">City-assigned priority level for each request.</p>
+        <div id="chart-priority"></div>
+      </div>
+    </section>
+
     <div id="tooltip"></div>
 
     <script src="js/d3.v6.min.js"></script>
     <script src="js/leaflet.js"></script>
     <script src="js/leafletMap.js"></script>
+    <script src="js/timeline.js"></script>
+    <script src="js/barChart.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

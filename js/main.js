@@ -1,37 +1,103 @@
-console.log('Cincinnati 311 Task 1 loaded');
+const SERVICE_KEYWORD = "TRASH";
 
-const SERVICE_KEYWORD = 'TRASH';
-let leafletMap = null;
-let timeline   = null;
+let leafletMap, timeline, barNeighborhood, barMethod, barDept, barPriority;
+let allData = [];
 
-// Load the sample data that came with the starter code.
-d3.csv('data/311Sample.csv')
-  .then(data => {
-    console.log('Rows loaded:', data.length);
+const dispatcher = d3.dispatch("selectionChanged");
 
-    // Keep only trash-related service requests for Task 1.
-    const trashData = data.filter(d => {
-      const desc = String(d.SR_TYPE_DESC || '').toUpperCase();
-      return desc.includes(SERVICE_KEYWORD);
-    });
+function updateAllViews(filteredData, sourceView) {
+  if (sourceView !== "map")
+    leafletMap.filterByIds(new Set(filteredData.map((d) => d.SR_NUMBER)));
+  if (sourceView !== "timeline") timeline.updateVis(filteredData);
+  if (sourceView !== "neighborhood") barNeighborhood.updateVis(filteredData);
+  if (sourceView !== "method") barMethod.updateVis(filteredData);
+  if (sourceView !== "dept") barDept.updateVis(filteredData);
+  if (sourceView !== "priority") barPriority.updateVis(filteredData);
 
-    // Clean numeric/date fields we need later.
-    trashData.forEach(d => {
-      d.LATITUDE = +d.LATITUDE;
-      d.LONGITUDE = +d.LONGITUDE;
+  d3.select("#clearBtn").style(
+    "display",
+    filteredData.length < allData.length ? "block" : "none",
+  );
+}
 
-      d.createdDate = d.DATE_CREATED ? new Date(d.DATE_CREATED) : null;
-      d.lastUpdateDate = d.DATE_LAST_UPDATE ? new Date(d.DATE_LAST_UPDATE) : null;
+dispatcher.on("selectionChanged", (filteredData, sourceView) => {
+  updateAllViews(filteredData, sourceView);
+});
 
-      if (d.createdDate && d.lastUpdateDate && !Number.isNaN(d.createdDate) && !Number.isNaN(d.lastUpdateDate)) {
-        const msPerDay = 1000 * 60 * 60 * 24;
-        d.daysToUpdate = Math.max(0, (d.lastUpdateDate - d.createdDate) / msPerDay);
-      } else {
-        d.daysToUpdate = null;
-      }
-    });
+d3.csv("data/311Sample.csv").then((data) => {
+  const trashData = data.filter((d) =>
+    String(d.SR_TYPE_DESC || "")
+      .toUpperCase()
+      .includes(SERVICE_KEYWORD),
+  );
 
-    leafletMap = new LeafletMap({ parentElement: '#my-map' }, trashData);
-    timeline   = new Timeline(  { parentElement: '#timeline-chart' }, trashData);
-  })
-  .catch(error => console.error(error));
+  trashData.forEach((d) => {
+    d.LATITUDE = +d.LATITUDE;
+    d.LONGITUDE = +d.LONGITUDE;
+    d.createdDate = d.DATE_CREATED ? new Date(d.DATE_CREATED) : null;
+    d.lastUpdateDate = d.DATE_LAST_UPDATE ? new Date(d.DATE_LAST_UPDATE) : null;
+    if (
+      d.createdDate &&
+      d.lastUpdateDate &&
+      !isNaN(d.createdDate) &&
+      !isNaN(d.lastUpdateDate)
+    ) {
+      d.daysToUpdate = Math.max(
+        0,
+        (d.lastUpdateDate - d.createdDate) / (1000 * 60 * 60 * 24),
+      );
+    } else {
+      d.daysToUpdate = null;
+    }
+  });
+
+  allData = trashData;
+
+  leafletMap = new LeafletMap(
+    { parentElement: "#my-map" },
+    allData,
+    dispatcher,
+  );
+  timeline = new Timeline(
+    { parentElement: "#timeline-chart" },
+    allData,
+    dispatcher,
+  );
+  barNeighborhood = new BarChart(
+    {
+      parentElement: "#chart-neighborhood",
+      field: "NEIGHBORHOOD",
+      sourceKey: "neighborhood",
+    },
+    allData,
+    dispatcher,
+  );
+  barMethod = new BarChart(
+    {
+      parentElement: "#chart-method",
+      field: "METHOD_RECEIVED",
+      sourceKey: "method",
+    },
+    allData,
+    dispatcher,
+  );
+  barDept = new BarChart(
+    { parentElement: "#chart-dept", field: "DEPT_NAME", sourceKey: "dept" },
+    allData,
+    dispatcher,
+  );
+  barPriority = new BarChart(
+    {
+      parentElement: "#chart-priority",
+      field: "PRIORITY",
+      sourceKey: "priority",
+    },
+    allData,
+    dispatcher,
+  );
+
+  d3.select("#clearBtn").on("click", () => {
+    dispatcher.call("selectionChanged", null, allData, "clear");
+    d3.select("#clearBtn").style("display", "none");
+  });
+});

@@ -1,10 +1,11 @@
 class LeafletMap {
-  constructor(_config, _data) {
+  constructor(_config, _data, _dispatcher) {
     this.config = {
       parentElement: _config.parentElement,
     };
 
     this.data = _data;
+    this.dispatcher = _dispatcher;
     this.mappedData = [];
     this.unmappedData = [];
 
@@ -330,4 +331,11 @@ class LeafletMap {
     if (value == null || Number.isNaN(value)) return "Not available";
     return value.toFixed(1) + " days";
   }
+
+   filterByIds(idSet) {
+    this.Dots
+      .attr('fill-opacity', d => idSet.has(d.SR_NUMBER) ? 0.85 : 0.08)
+      .attr('stroke-opacity', d => idSet.has(d.SR_NUMBER) ? 1 : 0.08);
+  }
+
 }
