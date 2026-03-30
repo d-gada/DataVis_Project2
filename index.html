@@ -26,6 +26,9 @@
         <div class="control-row">
           <label for="colorBySelect"><strong>Color by</strong></label>
           <select id="colorBySelect">
+            <option value="serviceType" selected>
+              Service type
+            </option>
             <option value="daysToUpdate">
               Time from created date to last update
             </option>
@@ -33,6 +36,19 @@
             <option value="priority">Priority</option>
             <option value="department">Public agency</option>
           </select>
+        </div>
+
+        <div class="control-row">
+          <label for="perceptionQuestionSelect"
+            ><strong>Survey question (district shading)</strong></label
+          >
+          <select id="perceptionQuestionSelect"></select>
+        </div>
+
+        <div class="control-row">
+          <button id="togglePerceptionBtn" type="button">
+            Hide district shading
+          </button>
         </div>
 
         <div class="control-row">

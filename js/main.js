@@ -1,22 +1,24 @@
-const SERVICE_KEYWORD = "TRASH";
-
 let leafletMap, timeline, barNeighborhood, barMethod, barDept, barPriority;
 let allData = [];
 
 const dispatcher = d3.dispatch("selectionChanged");
 
 function updateAllViews(filteredData, sourceView) {
+  const dataToShow = filteredData || allData;
+
   if (sourceView !== "map")
-    leafletMap.filterByIds(new Set(filteredData.map((d) => d.SR_NUMBER)));
-  if (sourceView !== "timeline") timeline.updateVis(filteredData);
-  if (sourceView !== "neighborhood") barNeighborhood.updateVis(filteredData);
-  if (sourceView !== "method") barMethod.updateVis(filteredData);
-  if (sourceView !== "dept") barDept.updateVis(filteredData);
-  if (sourceView !== "priority") barPriority.updateVis(filteredData);
+    leafletMap.filterByIds(new Set(dataToShow.map((d) => d.SR_NUMBER)));
+
+  // Keep all non-map charts in sync with the active subset, including timeline brushing.
+  timeline.updateVis(dataToShow);
+  if (sourceView !== "neighborhood") barNeighborhood.updateVis(dataToShow);
+  if (sourceView !== "method") barMethod.updateVis(dataToShow);
+  if (sourceView !== "dept") barDept.updateVis(dataToShow);
+  if (sourceView !== "priority") barPriority.updateVis(dataToShow);
 
   d3.select("#clearBtn").style(
     "display",
-    filteredData.length < allData.length ? "block" : "none",
+    dataToShow.length < allData.length ? "block" : "none",
   );
 }
 
@@ -24,14 +26,11 @@ dispatcher.on("selectionChanged", (filteredData, sourceView) => {
   updateAllViews(filteredData, sourceView);
 });
 
-d3.csv("data/311Sample.csv").then((data) => {
-  const trashData = data.filter((d) =>
-    String(d.SR_TYPE_DESC || "")
-      .toUpperCase()
-      .includes(SERVICE_KEYWORD),
-  );
-
-  trashData.forEach((d) => {
+d3.csv("data/311_Trash_processed.csv")
+  .catch(() => d3.csv("data/311Sample_old.csv"))
+  .catch(() => d3.csv("data/311Sample.csv"))
+  .then((data) => {
+  data.forEach((d) => {
     d.LATITUDE = +d.LATITUDE;
     d.LONGITUDE = +d.LONGITUDE;
     d.createdDate = d.DATE_CREATED ? new Date(d.DATE_CREATED) : null;
@@ -51,7 +50,7 @@ d3.csv("data/311Sample.csv").then((data) => {
     }
   });
 
-  allData = trashData;
+  allData = data;
 
   leafletMap = new LeafletMap(
     { parentElement: "#my-map" },
@@ -101,3 +100,4 @@ d3.csv("data/311Sample.csv").then((data) => {
     d3.select("#clearBtn").style("display", "none");
   });
 });
+

@@ -8,9 +8,21 @@ class LeafletMap {
     this.dispatcher = _dispatcher;
     this.mappedData = [];
     this.unmappedData = [];
+    this.perceptionRows = [];
+    this.perceptionQuestionLabels = [];
+    this.selectedPerceptionQuestion = 0;
+    this.showPerceptionOverlay = true;
+    this.legendItems = [];
+    this.selectedLegendKeys = new Set();
+    this.idFilterSet = null;
+    this.dayLegendBins = [];
+    this.districtPolygons = new Map();
+    this.districtCentroids = new Map();
+    this.perceptionLayer = L.layerGroup();
+    this.perceptionScale = d3.scaleLinear().range(["#d94801", "#fee6ce"]);
 
     // Default display choices.
-    this.colorBy = "daysToUpdate";
+    this.colorBy = "serviceType";
     this.currentBasemap = "imagery";
 
     this.initVis();
@@ -54,6 +66,8 @@ class LeafletMap {
       maxZoom: 18,
       layers: [vis.imageryLayer],
     });
+
+    vis.perceptionLayer.addTo(vis.theMap);
 
     // Add the d3 SVG layer on top of Leaflet.
     L.svg({ clickable: true }).addTo(vis.theMap);
@@ -124,8 +138,27 @@ class LeafletMap {
     // UI controls.
     d3.select("#colorBySelect").on("change", function () {
       vis.colorBy = this.value;
+      vis.selectedLegendKeys.clear();
       vis.createScales();
       vis.updateVis();
+      vis.updateLegend();
+    });
+
+    d3.select("#perceptionQuestionSelect").on("change", function () {
+      vis.selectedPerceptionQuestion = +this.value;
+      vis.renderPerceptionOverlay();
+      vis.updateLegend();
+    });
+
+    d3.select("#togglePerceptionBtn").on("click", function () {
+      vis.showPerceptionOverlay = !vis.showPerceptionOverlay;
+      if (vis.showPerceptionOverlay) {
+        vis.renderPerceptionOverlay();
+        d3.select(this).text("Hide district shading");
+      } else {
+        vis.perceptionLayer.clearLayers();
+        d3.select(this).text("Show district shading");
+      }
       vis.updateLegend();
     });
 
@@ -136,6 +169,140 @@ class LeafletMap {
     vis.updateSummary();
     vis.updateLegend();
     vis.updateVis();
+    vis.initPerceptionOverlay();
+  }
+
+
+
+  initPerceptionOverlay() {
+    const vis = this;
+
+    vis.buildDistrictPolygons();
+
+    d3.text("data/trash_service_perceptions.csv").then((text) => {
+      const rows = d3.csvParseRows(text.trim());
+      if (!rows.length) return;
+
+      const firstKey = String(rows[0][0] || "").trim();
+      const firstRowHasNumericValues = rows[0]
+        .slice(1)
+        .some((v) => Number.isFinite(+v));
+      const hasHeaderRow = !( /district/i.test(firstKey) && firstRowHasNumericValues );
+
+      const dataRows = hasHeaderRow ? rows.slice(1) : rows;
+
+      vis.perceptionQuestionLabels = hasHeaderRow
+        ? rows[0]
+            .slice(1)
+            .map((label, i) => String(label || "").trim() || `Question ${i + 1}`)
+        : d3
+            .range(Math.max((rows[0]?.length || 1) - 1, 0))
+            .map((i) => `Question ${i + 1}`);
+
+      vis.perceptionRows = dataRows
+        .filter((row) => row.length >= 2)
+        .map((row) => {
+          const districtLabel = (row[0] || "").trim();
+          const districtNum = districtLabel.replace(/[^0-9]/g, "");
+          const values = row.slice(1).map((v) => +v);
+          return { districtLabel, districtNum, values };
+        });
+
+      if (!vis.perceptionRows.length) return;
+
+      const questionSelect = d3.select("#perceptionQuestionSelect");
+      questionSelect
+        .selectAll("option")
+        .data(vis.perceptionQuestionLabels)
+        .join("option")
+        .attr("value", (_, i) => i)
+        .text((d) => d);
+
+      questionSelect.property("value", 0);
+      vis.selectedPerceptionQuestion = 0;
+      vis.renderPerceptionOverlay();
+      vis.updateLegend();
+    });
+  }
+
+  buildDistrictPolygons() {
+    const vis = this;
+    const grouped = d3.group(
+      vis.mappedData.filter((d) => String(d.POLICE_DISTRICT || "").trim()),
+      (d) => String(d.POLICE_DISTRICT).trim(),
+    );
+
+    grouped.forEach((rows, districtNum) => {
+      const points = rows.map((d) => [+d.LONGITUDE, +d.LATITUDE]);
+      const latAvg = d3.mean(rows, (d) => +d.LATITUDE);
+      const lonAvg = d3.mean(rows, (d) => +d.LONGITUDE);
+      if (Number.isFinite(latAvg) && Number.isFinite(lonAvg)) {
+        vis.districtCentroids.set(districtNum, [latAvg, lonAvg]);
+      }
+
+      const hull = d3.polygonHull(points);
+      if (!hull || hull.length < 3) return;
+
+      const latLngHull = hull.map(([lon, lat]) => [lat, lon]);
+      vis.districtPolygons.set(districtNum, latLngHull);
+    });
+  }
+
+  renderPerceptionOverlay() {
+    const vis = this;
+    vis.perceptionLayer.clearLayers();
+
+    if (!vis.perceptionRows.length || !vis.showPerceptionOverlay) return;
+
+    const values = vis.perceptionRows
+      .map((d) => d.values[vis.selectedPerceptionQuestion])
+      .filter((v) => Number.isFinite(v));
+
+    if (!values.length) return;
+
+    vis.perceptionScale.domain(d3.extent(values));
+
+    vis.perceptionRows.forEach((row) => {
+      const value = row.values[vis.selectedPerceptionQuestion];
+      if (!Number.isFinite(value)) return;
+
+      const polygon = vis.districtPolygons.get(row.districtNum);
+      const fillColor = vis.perceptionScale(value);
+
+      let layer;
+      if (polygon) {
+        layer = L.polygon(polygon, {
+          color: "#8c2d04",
+          weight: 2,
+          fillColor,
+          fillOpacity: 0.62,
+          interactive: true,
+        });
+      } else {
+        const centroid = vis.districtCentroids.get(row.districtNum);
+        if (!centroid) return;
+
+        layer = L.circleMarker(centroid, {
+          radius: 16,
+          color: "#8c2d04",
+          weight: 2,
+          fillColor,
+          fillOpacity: 0.8,
+          interactive: true,
+        });
+      }
+
+      layer.bindTooltip(
+        `<strong>${row.districtLabel}</strong><br>${vis.perceptionQuestionLabels[vis.selectedPerceptionQuestion]}: ${value.toFixed(2)}`,
+        { sticky: true },
+      );
+
+      vis.perceptionLayer.addLayer(layer);
+    });
+
+    vis.perceptionLayer.eachLayer((layer) => {
+      if (layer.bringToFront) layer.bringToFront();
+    });
   }
 
   createScales() {
@@ -150,7 +317,7 @@ class LeafletMap {
     vis.timeScale = d3
       .scaleLinear()
       .domain(daysExtent)
-      .range(["#cfe8f3", "#0e2f4e"]);
+      .range(["#0e2f4e", "#cfe8f3"]);
 
     // Categorical scales for the nominal fields.
     vis.neighborhoodDomain = Array.from(
@@ -162,6 +329,19 @@ class LeafletMap {
     vis.departmentDomain = Array.from(
       new Set(vis.mappedData.map((d) => d.DEPT_NAME).filter(Boolean)),
     ).sort();
+    vis.serviceTypeDomain = Array.from(
+      new Set(vis.mappedData.map((d) => d.SR_TYPE_DESC).filter(Boolean)),
+    ).sort();
+
+    const blueCount = Math.max(vis.serviceTypeDomain.length, 1);
+    const blueRange = d3.quantize(
+      d3.interpolateRgbBasis(["#deebf7", "#6baed6", "#2171b5", "#08306b"]),
+      blueCount,
+    );
+    vis.serviceTypeScale = d3
+      .scaleOrdinal()
+      .domain(vis.serviceTypeDomain)
+      .range(blueRange);
 
     vis.neighborhoodScale = d3
       .scaleOrdinal()
@@ -198,6 +378,10 @@ class LeafletMap {
       return d.DEPT_NAME ? vis.departmentScale(d.DEPT_NAME) : "#807675";
     }
 
+    if (vis.colorBy === "serviceType") {
+      return d.SR_TYPE_DESC ? vis.serviceTypeScale(d.SR_TYPE_DESC) : "#807675";
+    }
+
     return "#0e2f4e";
   }
 
@@ -216,13 +400,15 @@ class LeafletMap {
       .attr("r", function () {
         return +d3.select(this).attr("r") === 7 ? 7 : 5;
       });
+
+    vis.applyCombinedFilters();
   }
   updateSummary() {
     let vis = this;
 
     d3.select("#mappedCount").text(vis.mappedData.length);
     d3.select("#unmappedCount").text(vis.unmappedData.length);
-    d3.select("#serviceTypeLabel").text("Trash-related requests");
+    d3.select("#serviceTypeLabel").text("All service requests");
     d3.select("#basemapLabel").text(
       vis.currentBasemap === "imagery" ? "Imagery" : "Street map",
     );
@@ -233,77 +419,242 @@ class LeafletMap {
     const legend = d3.select("#legend");
     legend.selectAll("*").remove();
 
-    if (vis.colorBy === "daysToUpdate") {
-      d3.select("#legendTitle").text(
-        "Legend: Days from created date to last update",
-      );
+    vis.legendItems = vis.getLegendItems();
 
-      legend
-        .append("div")
-        .attr("class", "legend-gradient")
-        .style("background", "linear-gradient(to right, #cfe8f3, #0e2f4e)");
-
-      const [minDays, maxDays] = vis.timeScale.domain();
-      legend
-        .append("div")
-        .attr("class", "legend-scale")
-        .html(
-          `<span>${vis.formatDays(minDays)}</span><span>${vis.formatDays(maxDays)}</span>`,
-        );
-
-      legend
-        .append("div")
-        .attr("class", "legend-row")
-        .html(
-          '<span class="legend-swatch" style="background:#807675"></span><span>Missing date information</span>',
-        );
-
+    if (!vis.legendItems.length) {
+      d3.select("#legendTitle").text("Legend");
       return;
+    }
+
+    const validKeys = new Set(vis.legendItems.map((item) => item.key));
+    const persistedKeys = Array.from(vis.selectedLegendKeys).filter((key) =>
+      validKeys.has(key),
+    );
+
+    if (!persistedKeys.length) {
+      vis.selectedLegendKeys = new Set(vis.legendItems.map((item) => item.key));
+    } else {
+      vis.selectedLegendKeys = new Set(persistedKeys);
+    }
+
+    d3.select("#legendTitle").text(vis.getLegendTitle());
+
+    legend
+      .append("div")
+      .attr("class", "legend-note")
+      .text("Toggle categories to filter map points");
+
+    const rows = legend
+      .append("div")
+      .attr("class", "legend-list")
+      .selectAll("label")
+      .data(vis.legendItems, (d) => d.key)
+      .join("label")
+      .attr("class", "legend-row legend-toggle");
+
+    rows
+      .append("input")
+      .attr("type", "checkbox")
+      .attr("class", "legend-checkbox")
+      .property("checked", (d) => vis.selectedLegendKeys.has(d.key))
+      .on("change", function (_, d) {
+        if (this.checked) {
+          vis.selectedLegendKeys.add(d.key);
+        } else {
+          vis.selectedLegendKeys.delete(d.key);
+        }
+        vis.applyCombinedFilters();
+      });
+
+    rows
+      .append("span")
+      .attr("class", "legend-swatch")
+      .style("background", (d) => d.color);
+
+    rows.append("span").text((d) => d.label);
+
+    if (
+      vis.showPerceptionOverlay &&
+      vis.perceptionRows.length &&
+      vis.perceptionQuestionLabels.length
+    ) {
+      const pValues = vis.perceptionRows
+        .map((d) => d.values[vis.selectedPerceptionQuestion])
+        .filter((v) => Number.isFinite(v));
+
+      if (pValues.length) {
+        vis.perceptionScale.domain(d3.extent(pValues));
+
+        legend
+          .append("div")
+          .attr("class", "legend-row")
+          .style("margin-top", "6px")
+          .html(
+            `<strong>District perceptions (${vis.perceptionQuestionLabels[vis.selectedPerceptionQuestion]})</strong>`,
+          );
+
+        legend
+          .append("div")
+          .attr("class", "legend-gradient")
+          .style(
+            "background",
+            `linear-gradient(to right, ${vis.perceptionScale.range()[0]}, ${vis.perceptionScale.range()[1]})`,
+          );
+
+        legend
+          .append("div")
+          .attr("class", "legend-scale")
+          .html(
+            `<span>${d3.min(pValues).toFixed(2)}</span><span>${d3.max(pValues).toFixed(2)}</span>`,
+          );
+      }
+    }
+
+    vis.applyCombinedFilters();
+  }
+
+  getLegendTitle() {
+    const vis = this;
+    if (vis.colorBy === "daysToUpdate") {
+      return "Legend: Days from created date to last update";
+    }
+    if (vis.colorBy === "neighborhood") {
+      return "Legend: Neighborhood";
+    }
+    if (vis.colorBy === "priority") {
+      return "Legend: Priority";
+    }
+    if (vis.colorBy === "department") {
+      return "Legend: Public agency";
+    }
+    if (vis.colorBy === "serviceType") {
+      return "Legend: Service type";
+    }
+    return "Legend";
+  }
+
+  getLegendItems() {
+    const vis = this;
+
+    if (vis.colorBy === "daysToUpdate") {
+      const [rawMin, rawMax] = vis.timeScale.domain();
+      const minDays = Number.isFinite(rawMin) ? rawMin : 0;
+      const maxDays = Number.isFinite(rawMax) ? rawMax : minDays;
+      const binCount = 5;
+
+      vis.dayLegendBins = [];
+
+      if (maxDays === minDays) {
+        vis.dayLegendBins.push({
+          key: "days-bin-0",
+          min: minDays,
+          max: maxDays,
+          label: `${minDays.toFixed(1)} days`,
+          color: vis.timeScale(minDays),
+        });
+      } else {
+        const step = (maxDays - minDays) / binCount;
+
+        for (let i = 0; i < binCount; i += 1) {
+          const start = minDays + i * step;
+          const end = i === binCount - 1 ? maxDays : minDays + (i + 1) * step;
+          const midpoint = (start + end) / 2;
+
+          vis.dayLegendBins.push({
+            key: `days-bin-${i}`,
+            min: start,
+            max: end,
+            label: `${start.toFixed(1)} to ${end.toFixed(1)} days`,
+            color: vis.timeScale(midpoint),
+          });
+        }
+      }
+
+      return vis.dayLegendBins
+        .map((bin) => ({ key: bin.key, label: bin.label, color: bin.color }))
+        .concat([
+          {
+            key: "__missing__",
+            label: "Missing date information",
+            color: "#807675",
+          },
+        ]);
     }
 
     let domain = [];
     let scale = null;
-    let title = "Legend";
 
     if (vis.colorBy === "neighborhood") {
       domain = vis.neighborhoodDomain;
       scale = vis.neighborhoodScale;
-      title = "Legend: Neighborhood";
     } else if (vis.colorBy === "priority") {
       domain = vis.priorityDomain;
       scale = vis.priorityScale;
-      title = "Legend: Priority";
     } else if (vis.colorBy === "department") {
       domain = vis.departmentDomain;
       scale = vis.departmentScale;
-      title = "Legend: Public agency";
+    } else if (vis.colorBy === "serviceType") {
+      domain = vis.serviceTypeDomain;
+      scale = vis.serviceTypeScale;
     }
 
-    d3.select("#legendTitle").text(title);
+    return domain
+      .map((value) => ({ key: value, label: value, color: scale(value) }))
+      .concat([{ key: "__missing__", label: "Missing value", color: "#807675" }]);
+  }
 
-    // Keep the legend readable by showing the first several categories.
-    domain.slice(0, 12).forEach((value) => {
-      legend
-        .append("div")
-        .attr("class", "legend-row")
-        .html(
-          `<span class="legend-swatch" style="background:${scale(value)}"></span><span>${value}</span>`,
-        );
-    });
+  getLegendKey(d) {
+    const vis = this;
 
-    if (domain.length > 12) {
-      legend
-        .append("div")
-        .attr("class", "legend-row")
-        .text(`+ ${domain.length - 12} more categories on the map`);
-    }
+    if (vis.colorBy === "daysToUpdate") {
+      if (d.daysToUpdate == null || Number.isNaN(d.daysToUpdate)) {
+        return "__missing__";
+      }
 
-    legend
-      .append("div")
-      .attr("class", "legend-row")
-      .html(
-        '<span class="legend-swatch" style="background:#807675"></span><span>Missing value</span>',
+      const match = vis.dayLegendBins.find(
+        (bin, index) =>
+          d.daysToUpdate >= bin.min &&
+          (index === vis.dayLegendBins.length - 1
+            ? d.daysToUpdate <= bin.max
+            : d.daysToUpdate < bin.max),
       );
+
+      return match ? match.key : "__missing__";
+    }
+
+    if (vis.colorBy === "neighborhood") {
+      return d.NEIGHBORHOOD || "__missing__";
+    }
+
+    if (vis.colorBy === "priority") {
+      return d.PRIORITY || "__missing__";
+    }
+
+    if (vis.colorBy === "department") {
+      return d.DEPT_NAME || "__missing__";
+    }
+
+    if (vis.colorBy === "serviceType") {
+      return d.SR_TYPE_DESC || "__missing__";
+    }
+
+    return "__missing__";
+  }
+
+  applyCombinedFilters() {
+    const vis = this;
+
+    vis.Dots
+      .attr("fill-opacity", (d) => {
+        const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
+        const inLegendSelection = vis.selectedLegendKeys.has(vis.getLegendKey(d));
+        return inIdSelection && inLegendSelection ? 0.85 : 0.08;
+      })
+      .attr("stroke-opacity", (d) => {
+        const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
+        const inLegendSelection = vis.selectedLegendKeys.has(vis.getLegendKey(d));
+        return inIdSelection && inLegendSelection ? 1 : 0.08;
+      });
   }
 
   toggleBasemap() {
@@ -332,10 +683,10 @@ class LeafletMap {
     return value.toFixed(1) + " days";
   }
 
-   filterByIds(idSet) {
-    this.Dots
-      .attr('fill-opacity', d => idSet.has(d.SR_NUMBER) ? 0.85 : 0.08)
-      .attr('stroke-opacity', d => idSet.has(d.SR_NUMBER) ? 1 : 0.08);
+  filterByIds(idSet) {
+    this.idFilterSet = idSet;
+    this.applyCombinedFilters();
   }
 
 }
+
