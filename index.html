@@ -3,21 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cincinnati 311 Trash Requests Map</title>
+    <title>Cincinnati 311 Requests Map</title>
     <link rel="icon" href="data:;base64,iVBORwOKGO=" />
     <link rel="stylesheet" href="css/leaflet.css" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
     <header class="page-header">
-      <h1>Cincinnati 311 Trash Requests in 2025</h1>
-      <p class="subheading">Task 1 map view using Leaflet + d3</p>
+      <h1>Cincinnati 311 Service Requests in 2025</h1>
+      <p class="subheading">Interactive map view using Leaflet + d3</p>
       <p class="description">
-        This view focuses on trash-related 311 calls from the provided sample
+        This view displays trash and construction-related 311 calls from the provided sample
         data. Hover a point to see call details, change how points are colored,
         and switch the map background.
       </p>
     </header>
+
+    <div class="tabs-container">
+      <button class="tab-button" data-tab="trash" id="tab-trash">
+        <span class="tab-icon trash-icon">🗑️</span> Trash
+      </button>
+      <button class="tab-button" data-tab="construction" id="tab-construction">
+        <span class="tab-icon construction-icon">🏗️</span> Construction
+      </button>
+      <button class="tab-button active" data-tab="both" id="tab-both">
+        <span class="tab-icon both-icon">📊</span> Both
+      </button>
+    </div>
 
     <main class="layout">
       <section class="card controls-card">
@@ -69,9 +81,9 @@
 
         <div class="stats-grid">
           <div class="stat-box">
-            <div class="stat-label">Service focus</div>
-            <div class="stat-value" id="serviceTypeLabel">
-              Trash-related requests
+            <div class="stat-label">Request type</div>
+            <div class="stat-value" id="serviceTypeLabel" style="font-weight: 700; font-size: 16px;">
+              Trash
             </div>
           </div>
           <div class="stat-box">
@@ -95,10 +107,10 @@
       </section>
 
       <section class="card map-card">
-        <h2>Trash-related service requests</h2>
+        <h2 id="mapTitle">Service requests</h2>
         <p class="hint">
           Points are placed using the request latitude and longitude from the
-          dataset.
+          dataset. Click legend items to filter by category.
         </p>
         <div id="my-map"></div>
       </section>
