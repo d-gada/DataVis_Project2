@@ -9,8 +9,7 @@ function updateAllViews(filteredData, sourceView) {
   if (sourceView !== "map")
     leafletMap.filterByIds(new Set(dataToShow.map((d) => d.SR_NUMBER)));
 
-  // Keep all non-map charts in sync with the active subset, including timeline brushing.
-  timeline.updateVis(dataToShow);
+  if (sourceView !== "timeline") timeline.updateVis(dataToShow);
   if (sourceView !== "neighborhood") barNeighborhood.updateVis(dataToShow);
   if (sourceView !== "method") barMethod.updateVis(dataToShow);
   if (sourceView !== "dept") barDept.updateVis(dataToShow);
