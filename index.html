@@ -13,12 +13,7 @@
 <body>
   <header class="page-header">
     <h1>Cincinnati 311 Trash Requests in 2025</h1>
-    <p class="subheading">Task 1 map view using Leaflet + d3</p>
-    <p class="description">
-      This view focuses on trash-related 311 calls from the provided sample
-      data. Hover a point to see call details, change how points are colored,
-      and switch the map background.
-    </p>
+    <p class="subheading">Trash, Construction, and Traffic related 311 calls.</p>
   </header>
 
   <main class="layout">
@@ -91,10 +86,11 @@
     </section>
 
     <section class="card map-card">
-      <h2>Trash-related service requests</h2>
+      <h2>311 Service Requests</h2>
       <p class="hint">
-        Points are placed using the request latitude and longitude from the
-        dataset.
+        To Brush Select:
+        <br> 1. De-select District shading 
+        <br> 2. Click-drag over map (once plus sign cursor appears) to select data.
       </p>
       <div id="my-map"></div>
     </section>
@@ -103,10 +99,6 @@
   <section class="card timeline-card">
     <h2>Requests over time</h2>
     <p class="hint">
-      Each bar represents one week. Hover a bar to see the exact week and call
-      count. The chart uses a neutral desaturated color to keep focus on the
-      trend shape rather than implying a category distinction — the data here
-      is purely quantitative over time.
     </p>
     <div id="timeline-chart"></div>
   </section>
@@ -116,7 +108,7 @@
     <div class="card attr-card">
       <h2>Requests by neighborhood</h2>
       <p class="hint">
-        Sorted by volume. Shows which neighborhoods generate the most
+        Which neighborhoods generate the most
         trash-related calls.
       </p>
       <div id="chart-neighborhood"></div>
