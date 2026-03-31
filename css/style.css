@@ -138,6 +138,17 @@ select:hover {
   overflow: hidden;
 }
 
+.map-brush .selection {
+  fill: #4a7fa5;
+  fill-opacity: 0.18;
+  stroke: #0e2f4e;
+  stroke-width: 1.5px;
+}
+
+.map-brush .handle {
+  fill: #0e2f4e;
+}
+
 /* ── Timeline chart ─────────────────────────────────────────────────────────── */
 #timeline-chart {
   width: 100%;

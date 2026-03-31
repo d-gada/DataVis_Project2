@@ -95,6 +95,12 @@ d3.csv("data/311_Trash_processed.csv")
     );
 
     d3.select("#clearBtn").on("click", () => {
+      leafletMap.filterByIds(null);
+
+      if (leafletMap.brushGroup && leafletMap.brush) {
+        leafletMap.brushGroup.call(leafletMap.brush.move, null);
+      }
+
       dispatcher.call("selectionChanged", null, allData, "clear");
       d3.select("#clearBtn").style("display", "none");
     });

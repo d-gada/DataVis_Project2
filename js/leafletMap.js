@@ -26,6 +26,9 @@ class LeafletMap {
     this.selectedTrafficTypeKeys = new Set();
     this.TrafficDots = null;
     this.idFilterSet = null;
+    this.brush = null;
+    this.brushGroup = null;
+    this.brushedIds = null;
     this.dayLegendBins = [];
     this.districtPolygons = new Map();
     this.districtCentroids = new Map();
@@ -87,6 +90,16 @@ class LeafletMap {
 
     vis.createScales();
 
+    vis.brush = d3.brush()
+      .extent([[0, 0], [vis.theMap.getSize().x, vis.theMap.getSize().y]])
+      .on("end", function(event) {
+        vis.handleBrush(event);
+      });
+
+    vis.brushGroup = vis.svg.append("g")
+      .attr("class", "map-brush")
+      .call(vis.brush);
+
     // Join pattern from the tutorials.
     vis.Dots = vis.svg
       .selectAll("circle")
@@ -144,9 +157,14 @@ class LeafletMap {
     vis.loadConstructionData();
     vis.loadTrafficData();
 
-    // Reposition points after zooming or panning.
     vis.theMap.on("zoomend moveend", function () {
       vis.updateVis();
+    });
+
+    vis.theMap.on("zoomstart movestart", function () {
+      if (vis.brushGroup) {
+        vis.brushGroup.call(vis.brush.move, null);
+      }
     });
 
     // UI controls.
@@ -185,8 +203,6 @@ class LeafletMap {
     vis.updateVis();
     vis.initPerceptionOverlay();
   }
-
-
 
   initPerceptionOverlay() {
     const vis = this;
@@ -1018,18 +1034,26 @@ class LeafletMap {
       const showConstruction = vis.selectedDataTypes.has("construction");
       vis.ConstructionDots
         .attr("fill-opacity", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
           const typeKey = d.SR_TYPE_DESC || "__construction_missing__";
           const typeSelected =
             typeKey === "__construction_missing__" ||
             vis.selectedConstructionTypeKeys.has(typeKey);
-          return showConstruction && typeSelected ? 0.85 : 0.08;
+
+          return showConstruction && typeSelected && inIdSelection ? 0.85 : 0.02;
         })
         .attr("stroke-opacity", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
           const typeKey = d.SR_TYPE_DESC || "__construction_missing__";
           const typeSelected =
             typeKey === "__construction_missing__" ||
             vis.selectedConstructionTypeKeys.has(typeKey);
-          return showConstruction && typeSelected ? 1 : 0.08;
+
+          return showConstruction && typeSelected && inIdSelection ? 1 : 0.02;
+        })
+        .attr("r", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
+          return inIdSelection ? 5 : 3;
         });
     }
 
@@ -1037,18 +1061,26 @@ class LeafletMap {
       const showTraffic = vis.selectedDataTypes.has("traffic");
       vis.TrafficDots
         .attr("fill-opacity", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
           const typeKey = d.SR_TYPE_DESC || "__traffic_missing__";
           const typeSelected =
             typeKey === "__traffic_missing__" ||
             vis.selectedTrafficTypeKeys.has(typeKey);
-          return showTraffic && typeSelected ? 0.85 : 0.08;
+
+          return showTraffic && typeSelected && inIdSelection ? 0.85 : 0.02;
         })
         .attr("stroke-opacity", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
           const typeKey = d.SR_TYPE_DESC || "__traffic_missing__";
           const typeSelected =
             typeKey === "__traffic_missing__" ||
             vis.selectedTrafficTypeKeys.has(typeKey);
-          return showTraffic && typeSelected ? 1 : 0.08;
+
+          return showTraffic && typeSelected && inIdSelection ? 1 : 0.02;
+        })
+        .attr("r", (d) => {
+          const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
+          return inIdSelection ? 5 : 3;
         });
     }
   }
@@ -1077,6 +1109,32 @@ class LeafletMap {
   formatDays(value) {
     if (value == null || Number.isNaN(value)) return "Not available";
     return value.toFixed(1) + " days";
+  }
+
+  handleBrush(event) {
+    const vis = this;
+    const selection = event.selection;
+
+    // If brush is cleared, reset all views
+    if (!selection) {
+      vis.brushedIds = null;
+      vis.filterByIds(null);
+      vis.dispatcher.call("selectionChanged", null, allData, "map");
+      return;
+    }
+
+    const [[x0, y0], [x1, y1]] = selection;
+
+    const brushedData = vis.mappedData.filter((d) => {
+      const point = vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]);
+      return x0 <= point.x && point.x <= x1 && y0 <= point.y && point.y <= y1;
+    });
+
+    const brushedIdSet = new Set(brushedData.map((d) => d.SR_NUMBER));
+
+    vis.brushedIds = brushedIdSet;
+    vis.filterByIds(brushedIdSet);
+    vis.dispatcher.call("selectionChanged", null, brushedData, "map");
   }
 
   filterByIds(idSet) {
