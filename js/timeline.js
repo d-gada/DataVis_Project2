@@ -95,11 +95,11 @@ class Timeline {
         (d) => d.createdDate instanceof Date && !isNaN(d.createdDate),
       ),
       (v) => v.length,
-      (d) => d3.timeWeek.floor(d.createdDate),
+      (d) => +d3.timeWeek.floor(d.createdDate),
     );
 
-    vis.weeklyData = Array.from(weeklyMap, ([week, count]) => ({
-      week,
+    vis.weeklyData = Array.from(weeklyMap, ([ts, count]) => ({
+      week: new Date(ts),
       count,
     })).sort((a, b) => a.week - b.week);
 
