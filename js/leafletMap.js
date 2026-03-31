@@ -14,17 +14,23 @@ class LeafletMap {
     this.showPerceptionOverlay = true;
     this.legendItems = [];
     this.selectedLegendKeys = new Set();
+    this.selectedDataTypes = new Set(["trash", "construction", "traffic"]);
+    this.constructionData = [];
+    this.constructionTypeDomain = [];
+    this.constructionTypeScale = null;
+    this.selectedConstructionTypeKeys = new Set();
+    this.ConstructionDots = null;
+    this.trafficData = [];
+    this.trafficTypeDomain = [];
+    this.trafficTypeScale = null;
+    this.selectedTrafficTypeKeys = new Set();
+    this.TrafficDots = null;
     this.idFilterSet = null;
     this.dayLegendBins = [];
     this.districtPolygons = new Map();
     this.districtCentroids = new Map();
     this.perceptionLayer = L.layerGroup();
     this.perceptionScale = d3.scaleLinear().range(["#d94801", "#fee6ce"]);
-
-    // Request type and color scheme
-    this.requestType = "trash";
-    this.trashColorScale = null;
-    this.constructionColorScale = null;
 
     // Default display choices.
     this.colorBy = "serviceType";
@@ -135,6 +141,9 @@ class LeafletMap {
         d3.select("#tooltip").style("opacity", 0);
       });
 
+    vis.loadConstructionData();
+    vis.loadTrafficData();
+
     // Reposition points after zooming or panning.
     vis.theMap.on("zoomend moveend", function () {
       vis.updateVis();
@@ -182,46 +191,27 @@ class LeafletMap {
   initPerceptionOverlay() {
     const vis = this;
 
-    console.log("initPerceptionOverlay: Starting perception overlay initialization");
-    console.log("initPerceptionOverlay: mappedData length =", vis.mappedData.length);
-    console.log("initPerceptionOverlay: Trash data count =", vis.mappedData.filter((d) => d.requestType === "trash").length);
-
     vis.buildDistrictPolygons();
-    console.log("initPerceptionOverlay: District polygons built. Count =", vis.districtPolygons.size);
 
     d3.text("data/trash_service_perceptions.csv").then((text) => {
       const rows = d3.csvParseRows(text.trim());
-      console.log("initPerceptionOverlay: CSV loaded. Row count =", rows.length);
       if (!rows.length) return;
-    }).catch((error) => {
-      console.error("initPerceptionOverlay: ERROR loading CSV:", error);
-    });
 
       const firstKey = String(rows[0][0] || "").trim();
       const firstRowHasNumericValues = rows[0]
         .slice(1)
         .some((v) => Number.isFinite(+v));
-      const hasHeaderRow = !( /district/i.test(firstKey) && firstRowHasNumericValues );
-
-      console.log("initPerceptionOverlay: firstKey =", firstKey);
-      console.log("initPerceptionOverlay: firstRowHasNumericValues =", firstRowHasNumericValues);
-      console.log("initPerceptionOverlay: hasHeaderRow =", hasHeaderRow);
-     console.log("initPerceptionOverlay: First 3 rows of CSV:");
-     for (let i = 0; i < Math.min(3, rows.length); i++) {
-       console.log(`  Row ${i} (${rows[i].length} cols):`, rows[i].slice(0, 3).join(" | "), "...");
-     }
+      const hasHeaderRow = !(/district/i.test(firstKey) && firstRowHasNumericValues);
 
       const dataRows = hasHeaderRow ? rows.slice(1) : rows;
 
       vis.perceptionQuestionLabels = hasHeaderRow
         ? rows[0]
-            .slice(1)
-            .map((label, i) => String(label || "").trim() || `Question ${i + 1}`)
+          .slice(1)
+          .map((label, i) => String(label || "").trim() || `Question ${i + 1}`)
         : d3
-            .range(Math.max((rows[0]?.length || 1) - 1, 0))
-            .map((i) => `Question ${i + 1}`);
-
-      console.log("initPerceptionOverlay: Question labels =", vis.perceptionQuestionLabels);
+          .range(Math.max((rows[0]?.length || 1) - 1, 0))
+          .map((i) => `Question ${i + 1}`);
 
       vis.perceptionRows = dataRows
         .filter((row) => row.length >= 2)
@@ -232,16 +222,9 @@ class LeafletMap {
           return { districtLabel, districtNum, values };
         });
 
-      console.log("initPerceptionOverlay: Perception rows created. Count =", vis.perceptionRows.length);
-      if (vis.perceptionRows.length > 0) {
-        console.log("initPerceptionOverlay: First perception row =", vis.perceptionRows[0]);
-      }
-
       if (!vis.perceptionRows.length) return;
 
       const questionSelect = d3.select("#perceptionQuestionSelect");
-      console.log("initPerceptionOverlay: Question select element found =", questionSelect.node() !== null);
-      
       questionSelect
         .selectAll("option")
         .data(vis.perceptionQuestionLabels)
@@ -249,36 +232,19 @@ class LeafletMap {
         .attr("value", (_, i) => i)
         .text((d) => d);
 
-      console.log("initPerceptionOverlay: Dropdown populated with", vis.perceptionQuestionLabels.length, "options");
-
       questionSelect.property("value", 0);
       vis.selectedPerceptionQuestion = 0;
-      console.log("initPerceptionOverlay: Starting perception overlay rendering");
       vis.renderPerceptionOverlay();
       vis.updateLegend();
-      console.log("initPerceptionOverlay: Perception overlay initialization complete");
     });
   }
 
   buildDistrictPolygons() {
     const vis = this;
-    // Only build district polygons using trash data (perception survey is about trash)
-    const trashData = vis.mappedData.filter((d) => d.requestType === "trash" && String(d.POLICE_DISTRICT || "").trim());
-    
-    console.log("buildDistrictPolygons: Filtered trash data. Count =", trashData.length);
-    console.log("buildDistrictPolygons: Total mappedData =", vis.mappedData.length);
-    console.log("buildDistrictPolygons: Trash records in mappedData =", vis.mappedData.filter((d) => d.requestType === "trash").length);
-     console.log("buildDistrictPolygons: Trash records with POLICE_DISTRICT =", vis.mappedData.filter((d) => d.requestType === "trash" && String(d.POLICE_DISTRICT || "").trim()).length);
-   
-     if (trashData.length === 0) {
-       console.warn("buildDistrictPolygons: WARNING! No trash data with POLICE_DISTRICT found!");
-       console.warn("buildDistrictPolygons: Sample of mappedData requestTypes:", vis.mappedData.slice(0, 5).map((d) => ({ requestType: d.requestType, POLICE_DISTRICT: d.POLICE_DISTRICT })));
-       return;
-     }
-
-    const grouped = d3.group(trashData, (d) => String(d.POLICE_DISTRICT).trim());
-
-    console.log("buildDistrictPolygons: Grouped into", grouped.size, "districts");
+    const grouped = d3.group(
+      vis.mappedData.filter((d) => String(d.POLICE_DISTRICT || "").trim()),
+      (d) => String(d.POLICE_DISTRICT).trim(),
+    );
 
     grouped.forEach((rows, districtNum) => {
       const points = rows.map((d) => [+d.LONGITUDE, +d.LATITUDE]);
@@ -289,14 +255,10 @@ class LeafletMap {
       }
 
       const hull = d3.polygonHull(points);
-      if (!hull || hull.length < 3) {
-        console.log("buildDistrictPolygons: District", districtNum, "hull invalid. Hull length =", hull?.length);
-        return;
-      }
+      if (!hull || hull.length < 3) return;
 
       const latLngHull = hull.map(([lon, lat]) => [lat, lon]);
       vis.districtPolygons.set(districtNum, latLngHull);
-      console.log("buildDistrictPolygons: Built polygon for district", districtNum);
     });
   }
 
@@ -304,21 +266,16 @@ class LeafletMap {
     const vis = this;
     vis.perceptionLayer.clearLayers();
 
-    console.log("renderPerceptionOverlay: Starting. perceptionRows.length =", vis.perceptionRows.length, "showPerceptionOverlay =", vis.showPerceptionOverlay);
-
     if (!vis.perceptionRows.length || !vis.showPerceptionOverlay) return;
 
     const values = vis.perceptionRows
       .map((d) => d.values[vis.selectedPerceptionQuestion])
       .filter((v) => Number.isFinite(v));
 
-    console.log("renderPerceptionOverlay: Extracted", values.length, "valid values from question", vis.selectedPerceptionQuestion);
-
     if (!values.length) return;
 
     vis.perceptionScale.domain(d3.extent(values));
 
-    let layerCount = 0;
     vis.perceptionRows.forEach((row) => {
       const value = row.values[vis.selectedPerceptionQuestion];
       if (!Number.isFinite(value)) return;
@@ -328,7 +285,6 @@ class LeafletMap {
 
       let layer;
       if (polygon) {
-        console.log("renderPerceptionOverlay: Creating polygon for district", row.districtNum);
         layer = L.polygon(polygon, {
           color: "#8c2d04",
           weight: 2,
@@ -338,12 +294,8 @@ class LeafletMap {
         });
       } else {
         const centroid = vis.districtCentroids.get(row.districtNum);
-        if (!centroid) {
-          console.log("renderPerceptionOverlay: No polygon or centroid for district", row.districtNum);
-          return;
-        }
+        if (!centroid) return;
 
-        console.log("renderPerceptionOverlay: Creating circle marker for district", row.districtNum, "at", centroid);
         layer = L.circleMarker(centroid, {
           radius: 16,
           color: "#8c2d04",
@@ -360,10 +312,7 @@ class LeafletMap {
       );
 
       vis.perceptionLayer.addLayer(layer);
-      layerCount++;
     });
-
-    console.log("renderPerceptionOverlay: Finished. Total layers added =", layerCount);
 
     vis.perceptionLayer.eachLayer((layer) => {
       if (layer.bringToFront) layer.bringToFront();
@@ -398,26 +347,15 @@ class LeafletMap {
       new Set(vis.mappedData.map((d) => d.SR_TYPE_DESC).filter(Boolean)),
     ).sort();
 
-    // Create distinct service type scales for trash and construction
-    const trashCount = Math.max(vis.serviceTypeDomain.length, 1);
-    const trashRange = d3.quantize(
-      d3.interpolateRgbBasis(["#e8f5e9", "#66bb6a", "#2e7d32", "#1b5e20"]),
-      trashCount,
+    const blueCount = Math.max(vis.serviceTypeDomain.length, 1);
+    const blueRange = d3.quantize(
+      d3.interpolateRgbBasis(["#deebf7", "#6baed6", "#2171b5", "#08306b"]),
+      blueCount,
     );
-    vis.trashColorScale = d3
+    vis.serviceTypeScale = d3
       .scaleOrdinal()
       .domain(vis.serviceTypeDomain)
-      .range(trashRange);
-
-    const constructionCount = Math.max(vis.serviceTypeDomain.length, 1);
-    const constructionRange = d3.quantize(
-      d3.interpolateRgbBasis(["#ffe0b2", "#ff9800", "#e65100", "#bf360c"]),
-      constructionCount,
-    );
-    vis.constructionColorScale = d3
-      .scaleOrdinal()
-      .domain(vis.serviceTypeDomain)
-      .range(constructionRange);
+      .range(blueRange);
 
     vis.neighborhoodScale = d3
       .scaleOrdinal()
@@ -455,11 +393,7 @@ class LeafletMap {
     }
 
     if (vis.colorBy === "serviceType") {
-      if (!d.SR_TYPE_DESC) return "#807675";
-      if (d.requestType === "construction") {
-        return vis.constructionColorScale(d.SR_TYPE_DESC);
-      }
-      return vis.trashColorScale(d.SR_TYPE_DESC);
+      return d.SR_TYPE_DESC ? vis.serviceTypeScale(d.SR_TYPE_DESC) : "#807675";
     }
 
     return "#0e2f4e";
@@ -481,7 +415,221 @@ class LeafletMap {
         return +d3.select(this).attr("r") === 7 ? 7 : 5;
       });
 
+    if (vis.ConstructionDots) {
+      vis.ConstructionDots
+        .attr(
+          "cx",
+          (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).x,
+        )
+        .attr(
+          "cy",
+          (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).y,
+        );
+    }
+
+    if (vis.TrafficDots) {
+      vis.TrafficDots
+        .attr(
+          "cx",
+          (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).x,
+        )
+        .attr(
+          "cy",
+          (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).y,
+        );
+    }
+
     vis.applyCombinedFilters();
+  }
+
+  loadConstructionData() {
+    const vis = this;
+
+    d3.csv("data/311_Construction_processed.csv")
+      .then((rows) => {
+        rows.forEach((d) => {
+          d.LATITUDE = +d.LATITUDE;
+          d.LONGITUDE = +d.LONGITUDE;
+        });
+
+        vis.constructionData = rows.filter(
+          (d) => Number.isFinite(d.LATITUDE) && Number.isFinite(d.LONGITUDE),
+        );
+
+        vis.constructionTypeDomain = Array.from(
+          new Set(vis.constructionData.map((d) => d.SR_TYPE_DESC).filter(Boolean)),
+        ).sort();
+
+        const purpleCount = Math.max(vis.constructionTypeDomain.length, 1);
+        const purpleRange = d3.quantize(
+          d3.interpolateRgbBasis(["#f2e5ff", "#c8a8ef", "#9b6fd3", "#6f42c1", "#4c1d95"]),
+          purpleCount,
+        );
+        vis.constructionTypeScale = d3
+          .scaleOrdinal()
+          .domain(vis.constructionTypeDomain)
+          .range(purpleRange);
+
+        if (!vis.selectedConstructionTypeKeys.size) {
+          vis.selectedConstructionTypeKeys = new Set(vis.constructionTypeDomain);
+        }
+
+        vis.ConstructionDots = vis.svg
+          .selectAll(".construction-dot")
+          .data(vis.constructionData, (d) => d.SR_NUMBER || `${d.LATITUDE}-${d.LONGITUDE}`)
+          .join("circle")
+          .attr("class", "construction-dot")
+          .attr("stroke", "#6e5a00")
+          .attr("stroke-width", 0.9)
+          .attr("fill", (d) => {
+            const key = d.SR_TYPE_DESC || "__construction_missing__";
+            return key === "__construction_missing__"
+              ? "#b39ddb"
+              : vis.constructionTypeScale(d.SR_TYPE_DESC);
+          })
+          .attr("fill-opacity", 0.85)
+          .attr(
+            "cx",
+            (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).x,
+          )
+          .attr(
+            "cy",
+            (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).y,
+          )
+          .attr("r", 5)
+          .on("mouseover", function (event, d) {
+            d3.select(this)
+              .transition()
+              .duration(150)
+              .attr("r", 7)
+              .attr("stroke-width", 1.4);
+
+            d3.select("#tooltip").style("opacity", 1).html(`
+              <div class="tooltip-title">${d.SR_TYPE_DESC || "311 Construction"}</div>
+              <div><strong>Date created:</strong> ${vis.formatDate(d.DATE_CREATED)}</div>
+              <div><strong>Agency:</strong> ${d.DEPT_NAME || "Not listed"}</div>
+              <div><strong>Priority:</strong> ${d.PRIORITY || "Not listed"}</div>
+              <div><strong>Neighborhood:</strong> ${d.NEIGHBORHOOD || "Not listed"}</div>
+              <div><strong>Address:</strong> ${d.ADDRESS || "Not listed"}</div>
+              <div><strong>Status:</strong> ${d.SR_STATUS || "Not listed"}</div>
+            `);
+          })
+          .on("mousemove", function (event) {
+            d3.select("#tooltip")
+              .style("left", event.pageX + 12 + "px")
+              .style("top", event.pageY + 12 + "px");
+          })
+          .on("mouseleave", function () {
+            d3.select(this)
+              .transition()
+              .duration(150)
+              .attr("r", 5)
+              .attr("stroke-width", 0.9);
+
+            d3.select("#tooltip").style("opacity", 0);
+          });
+
+        vis.applyCombinedFilters();
+        vis.updateLegend();
+      })
+      .catch(() => {
+        vis.constructionData = [];
+      });
+  }
+
+  loadTrafficData() {
+    const vis = this;
+
+    d3.csv("data/311_Traffic_processed.csv")
+      .then((rows) => {
+        rows.forEach((d) => {
+          d.LATITUDE = +d.LATITUDE;
+          d.LONGITUDE = +d.LONGITUDE;
+        });
+
+        vis.trafficData = rows.filter(
+          (d) => Number.isFinite(d.LATITUDE) && Number.isFinite(d.LONGITUDE),
+        );
+
+        vis.trafficTypeDomain = Array.from(
+          new Set(vis.trafficData.map((d) => d.SR_TYPE_DESC).filter(Boolean)),
+        ).sort();
+
+        const redCount = Math.max(vis.trafficTypeDomain.length, 1);
+        const redRange = d3.quantize(
+          d3.interpolateRgbBasis(["#fee5e5", "#fca5a5", "#ef4444", "#b91c1c", "#7f1d1d"]),
+          redCount,
+        );
+        vis.trafficTypeScale = d3
+          .scaleOrdinal()
+          .domain(vis.trafficTypeDomain)
+          .range(redRange);
+
+        if (!vis.selectedTrafficTypeKeys.size) {
+          vis.selectedTrafficTypeKeys = new Set(vis.trafficTypeDomain);
+        }
+
+        vis.TrafficDots = vis.svg
+          .selectAll(".traffic-dot")
+          .data(vis.trafficData, (d) => d.SR_NUMBER || `${d.LATITUDE}-${d.LONGITUDE}`)
+          .join("circle")
+          .attr("class", "traffic-dot")
+          .attr("stroke", "#5f1111")
+          .attr("stroke-width", 0.9)
+          .attr("fill", (d) => {
+            const key = d.SR_TYPE_DESC || "__traffic_missing__";
+            return key === "__traffic_missing__"
+              ? "#dca3a3"
+              : vis.trafficTypeScale(d.SR_TYPE_DESC);
+          })
+          .attr("fill-opacity", 0.85)
+          .attr(
+            "cx",
+            (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).x,
+          )
+          .attr(
+            "cy",
+            (d) => vis.theMap.latLngToLayerPoint([d.LATITUDE, d.LONGITUDE]).y,
+          )
+          .attr("r", 5)
+          .on("mouseover", function (event, d) {
+            d3.select(this)
+              .transition()
+              .duration(150)
+              .attr("r", 7)
+              .attr("stroke-width", 1.4);
+
+            d3.select("#tooltip").style("opacity", 1).html(`
+              <div class="tooltip-title">${d.SR_TYPE_DESC || "311 Traffic"}</div>
+              <div><strong>Date created:</strong> ${vis.formatDate(d.DATE_CREATED)}</div>
+              <div><strong>Agency:</strong> ${d.DEPT_NAME || "Not listed"}</div>
+              <div><strong>Priority:</strong> ${d.PRIORITY || "Not listed"}</div>
+              <div><strong>Neighborhood:</strong> ${d.NEIGHBORHOOD || "Not listed"}</div>
+              <div><strong>Address:</strong> ${d.ADDRESS || "Not listed"}</div>
+              <div><strong>Status:</strong> ${d.SR_STATUS || "Not listed"}</div>
+            `);
+          })
+          .on("mousemove", function (event) {
+            d3.select("#tooltip")
+              .style("left", event.pageX + 12 + "px")
+              .style("top", event.pageY + 12 + "px");
+          })
+          .on("mouseleave", function () {
+            d3.select(this)
+              .transition()
+              .duration(150)
+              .attr("r", 5)
+              .attr("stroke-width", 0.9);
+
+            d3.select("#tooltip").style("opacity", 0);
+          });
+
+        vis.applyCombinedFilters();
+        vis.updateLegend();
+      })
+      .catch(() => {
+        vis.trafficData = [];
+      });
   }
   updateSummary() {
     let vis = this;
@@ -523,6 +671,138 @@ class LeafletMap {
       .append("div")
       .attr("class", "legend-note")
       .text("Toggle categories to filter map points");
+
+    legend
+      .append("div")
+      .attr("class", "legend-row")
+      .html("<strong>Request source</strong>");
+
+    const sourceRows = legend
+      .append("div")
+      .attr("class", "legend-list")
+      .selectAll("label")
+      .data([
+        { key: "trash", label: "Trash requests", color: "#2171b5" },
+        { key: "construction", label: "Construction requests", color: "#783a9f" },
+        { key: "traffic", label: "Traffic requests", color: "#ef4444" },
+      ])
+      .join("label")
+      .attr("class", "legend-row legend-toggle");
+
+    sourceRows
+      .append("input")
+      .attr("type", "checkbox")
+      .attr("class", "legend-checkbox")
+      .property("checked", (d) => vis.selectedDataTypes.has(d.key))
+      .on("change", function (_, d) {
+        if (this.checked) {
+          vis.selectedDataTypes.add(d.key);
+        } else {
+          vis.selectedDataTypes.delete(d.key);
+        }
+        vis.applyCombinedFilters();
+      });
+
+    sourceRows
+      .append("span")
+      .attr("class", "legend-swatch")
+      .style("background", (d) => d.color);
+
+    sourceRows.append("span").text((d) => d.label);
+
+    if (vis.constructionTypeDomain.length) {
+      legend
+        .append("div")
+        .attr("class", "legend-row")
+        .style("margin-top", "4px")
+        .html("<strong>Construction SR type</strong>");
+
+      const constructionItems = vis.constructionTypeDomain
+        .map((value) => ({
+          key: value,
+          label: value,
+          color: vis.constructionTypeScale(value),
+        }));
+
+      const cRows = legend
+        .append("div")
+        .attr("class", "legend-list")
+        .selectAll("label")
+        .data(constructionItems, (d) => d.key)
+        .join("label")
+        .attr("class", "legend-row legend-toggle");
+
+      cRows
+        .append("input")
+        .attr("type", "checkbox")
+        .attr("class", "legend-checkbox")
+        .property("checked", (d) => vis.selectedConstructionTypeKeys.has(d.key))
+        .on("change", function (_, d) {
+          if (this.checked) {
+            vis.selectedConstructionTypeKeys.add(d.key);
+          } else {
+            vis.selectedConstructionTypeKeys.delete(d.key);
+          }
+          vis.applyCombinedFilters();
+        });
+
+      cRows
+        .append("span")
+        .attr("class", "legend-swatch")
+        .style("background", (d) => d.color);
+
+      cRows.append("span").text((d) => d.label);
+    }
+
+    if (vis.trafficTypeDomain.length) {
+      legend
+        .append("div")
+        .attr("class", "legend-row")
+        .style("margin-top", "4px")
+        .html("<strong>Traffic SR type</strong>");
+
+      const trafficItems = vis.trafficTypeDomain
+        .map((value) => ({
+          key: value,
+          label: value,
+          color: vis.trafficTypeScale(value),
+        }));
+
+      const tRows = legend
+        .append("div")
+        .attr("class", "legend-list")
+        .selectAll("label")
+        .data(trafficItems, (d) => d.key)
+        .join("label")
+        .attr("class", "legend-row legend-toggle");
+
+      tRows
+        .append("input")
+        .attr("type", "checkbox")
+        .attr("class", "legend-checkbox")
+        .property("checked", (d) => vis.selectedTrafficTypeKeys.has(d.key))
+        .on("change", function (_, d) {
+          if (this.checked) {
+            vis.selectedTrafficTypeKeys.add(d.key);
+          } else {
+            vis.selectedTrafficTypeKeys.delete(d.key);
+          }
+          vis.applyCombinedFilters();
+        });
+
+      tRows
+        .append("span")
+        .attr("class", "legend-swatch")
+        .style("background", (d) => d.color);
+
+      tRows.append("span").text((d) => d.label);
+    }
+
+    legend
+      .append("div")
+      .attr("class", "legend-row")
+      .style("margin-top", "4px")
+      .html("<strong>Trash categories</strong>");
 
     const rows = legend
       .append("div")
@@ -651,14 +931,7 @@ class LeafletMap {
       }
 
       return vis.dayLegendBins
-        .map((bin) => ({ key: bin.key, label: bin.label, color: bin.color }))
-        .concat([
-          {
-            key: "__missing__",
-            label: "Missing date information",
-            color: "#807675",
-          },
-        ]);
+        .map((bin) => ({ key: bin.key, label: bin.label, color: bin.color }));
     }
 
     let domain = [];
@@ -679,8 +952,7 @@ class LeafletMap {
     }
 
     return domain
-      .map((value) => ({ key: value, label: value, color: scale(value) }))
-      .concat([{ key: "__missing__", label: "Missing value", color: "#807675" }]);
+      .map((value) => ({ key: value, label: value, color: scale(value) }));
   }
 
   getLegendKey(d) {
@@ -727,14 +999,58 @@ class LeafletMap {
     vis.Dots
       .attr("fill-opacity", (d) => {
         const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
-        const inLegendSelection = vis.selectedLegendKeys.has(vis.getLegendKey(d));
-        return inIdSelection && inLegendSelection ? 0.85 : 0.08;
+        const inSourceSelection = vis.selectedDataTypes.has("trash");
+        const legendKey = vis.getLegendKey(d);
+        const inLegendSelection =
+          legendKey === "__missing__" || vis.selectedLegendKeys.has(legendKey);
+        return inIdSelection && inSourceSelection && inLegendSelection ? 0.85 : 0.08;
       })
       .attr("stroke-opacity", (d) => {
         const inIdSelection = !vis.idFilterSet || vis.idFilterSet.has(d.SR_NUMBER);
-        const inLegendSelection = vis.selectedLegendKeys.has(vis.getLegendKey(d));
-        return inIdSelection && inLegendSelection ? 1 : 0.08;
+        const inSourceSelection = vis.selectedDataTypes.has("trash");
+        const legendKey = vis.getLegendKey(d);
+        const inLegendSelection =
+          legendKey === "__missing__" || vis.selectedLegendKeys.has(legendKey);
+        return inIdSelection && inSourceSelection && inLegendSelection ? 1 : 0.08;
       });
+
+    if (vis.ConstructionDots) {
+      const showConstruction = vis.selectedDataTypes.has("construction");
+      vis.ConstructionDots
+        .attr("fill-opacity", (d) => {
+          const typeKey = d.SR_TYPE_DESC || "__construction_missing__";
+          const typeSelected =
+            typeKey === "__construction_missing__" ||
+            vis.selectedConstructionTypeKeys.has(typeKey);
+          return showConstruction && typeSelected ? 0.85 : 0.08;
+        })
+        .attr("stroke-opacity", (d) => {
+          const typeKey = d.SR_TYPE_DESC || "__construction_missing__";
+          const typeSelected =
+            typeKey === "__construction_missing__" ||
+            vis.selectedConstructionTypeKeys.has(typeKey);
+          return showConstruction && typeSelected ? 1 : 0.08;
+        });
+    }
+
+    if (vis.TrafficDots) {
+      const showTraffic = vis.selectedDataTypes.has("traffic");
+      vis.TrafficDots
+        .attr("fill-opacity", (d) => {
+          const typeKey = d.SR_TYPE_DESC || "__traffic_missing__";
+          const typeSelected =
+            typeKey === "__traffic_missing__" ||
+            vis.selectedTrafficTypeKeys.has(typeKey);
+          return showTraffic && typeSelected ? 0.85 : 0.08;
+        })
+        .attr("stroke-opacity", (d) => {
+          const typeKey = d.SR_TYPE_DESC || "__traffic_missing__";
+          const typeSelected =
+            typeKey === "__traffic_missing__" ||
+            vis.selectedTrafficTypeKeys.has(typeKey);
+          return showTraffic && typeSelected ? 1 : 0.08;
+        });
+    }
   }
 
   toggleBasemap() {
@@ -761,40 +1077,6 @@ class LeafletMap {
   formatDays(value) {
     if (value == null || Number.isNaN(value)) return "Not available";
     return value.toFixed(1) + " days";
-  }
-
-  setRequestType(type) {
-    this.requestType = type;
-    
-    // Rebuild district polygons with current data
-    this.districtPolygons.clear();
-    this.districtCentroids.clear();
-    this.buildDistrictPolygons();
-    
-    // Manage perception overlay visibility based on request type
-    const perceptionSelectParent = d3.select("#perceptionQuestionSelect").node().parentElement;
-    const perceptionBtnParent = d3.select("#togglePerceptionBtn").node().parentElement;
-    
-    console.log("setRequestType: type =", type);
-    console.log("setRequestType: perceptionSelectParent =", perceptionSelectParent);
-    console.log("setRequestType: perceptionBtnParent =", perceptionBtnParent);
-    
-    if (type === "construction") {
-      // Hide perception controls for construction-only view
-      if (perceptionSelectParent) d3.select(perceptionSelectParent).style("display", "none");
-      if (perceptionBtnParent) d3.select(perceptionBtnParent).style("display", "none");
-      this.showPerceptionOverlay = false;
-      this.perceptionLayer.clearLayers();
-    } else {
-      // Show perception controls for trash or both views
-      if (perceptionSelectParent) d3.select(perceptionSelectParent).style("display", "block");
-      if (perceptionBtnParent) d3.select(perceptionBtnParent).style("display", "block");
-      if (this.showPerceptionOverlay && this.perceptionRows.length > 0) {
-        this.renderPerceptionOverlay();
-      }
-    }
-    
-    this.updateVis();
   }
 
   filterByIds(idSet) {
